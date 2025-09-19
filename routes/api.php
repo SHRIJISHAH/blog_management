@@ -9,18 +9,13 @@ use App\Http\Controllers\BlogController;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
 */
 
 // Public routes
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
-// // Protected routes
+// Protected routes
 Route::middleware(['auth:sanctum', 'throttle:custom_api'])->group(function () {
 
     // Auth routes
