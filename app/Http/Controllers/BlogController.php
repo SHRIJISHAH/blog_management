@@ -11,6 +11,7 @@ use App\Http\Requests\StoreBlogRequest;
 use App\Http\Requests\UpdateBlogRequest;
 use App\Http\Resources\BlogResource;
 use App\Http\Resources\BlogCollection;
+use Illuminate\Support\Facades\DB;
 
 class BlogController extends Controller
 {
@@ -27,7 +28,10 @@ class BlogController extends Controller
 
             $blog = Blog::create($data);
             $blog->load('user');
- 
+            
+            $blog->likes_count = 0;
+            $blog->is_liked = false;
+
             return response()->json([
                 'message' => 'Blog created successfully',
                 'blog' => new BlogResource($blog)
@@ -40,7 +44,8 @@ class BlogController extends Controller
 
     public function index(Request $request)
     {
-        $query = Blog::withCount('likes')->with('user');
+        $query = Blog::withCount('likes')
+            ->with('user');
 
         if ($search = $request->query('search')) {
             $query->where(function($q) use ($search) {
@@ -55,6 +60,14 @@ class BlogController extends Controller
             $query->latest();
         }
 
+        if (auth()->check()) {
+            $query->withExists(['likes as is_liked' => function ($q) {
+                $q->where('user_id', auth()->id());
+            }]);
+        } else {
+            $query->addSelect(DB::raw('false as is_liked'));
+        }
+
         $blogs = $query->paginate($request->get('per_page', 5));
 
         return new BlogCollection($blogs);
@@ -63,10 +76,19 @@ class BlogController extends Controller
     public function show($id)
     {
         try {
-            $blog = Blog::withCount('likes')
-                    ->with('user')
-                    ->findOrFail($id);
-                    
+            $query = Blog::withCount('likes')
+                ->with('user');
+
+            if (auth()->check()) {
+                $query->withExists(['likes as is_liked' => function ($q) {
+                    $q->where('user_id', auth()->id());
+                }]);
+            } else {
+                $query->addSelect(DB::raw('false as is_liked'));
+            }
+
+            $blog = $query->findOrFail($id);
+
             return response()->json([
                 'message' => 'Blog retrieved successfully',
                 'blog' => new BlogResource($blog)
@@ -93,7 +115,12 @@ class BlogController extends Controller
 
             $blog->update($data);
             $blog->load('user');
-            
+
+            $blog->loadCount('likes');
+            $blog->loadExists(['likes as is_liked' => function ($q) {
+                $q->where('user_id', auth()->id());
+            }]);
+
             return response()->json([
                 'message' => 'Blog updated successfully',
                 'blog' => new BlogResource($blog)
@@ -141,10 +168,12 @@ class BlogController extends Controller
                 $liked = true;
             }
 
+            $likesCount = $blog->likes()->count();
+
             return response()->json([
                 'message' => $message,
                 'liked' => $liked,
-                'likes_count' => $blog->likes()->count()
+                'likes_count' => $likesCount
             ]);
         } catch (ModelNotFoundException $e) {
             return response()->json(['error' => 'Blog not found'], 404);
